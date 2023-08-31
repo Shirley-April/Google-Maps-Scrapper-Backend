@@ -1,7 +1,7 @@
 const express = require("express");
 const app = express();
 
-import { scrapeGoogleMaps } from "./scrapper";
+import { scrapeGoogleMaps } from "./scrapper.js";
 
 app.get("/", async (request, response) => {
   try {
