@@ -1,13 +1,17 @@
 const express = require("express");
 const app = express();
 
-app.get("/", function(request, response) {
-  return response.send("Hello World!");
+import { scrapeGoogleMaps } from "./scrapper";
+
+app.get("/", async (request, response) => {
+  try {
+    const results = await scrapeGoogleMaps();
+    response.send(results);
+  } catch {
+    response.send({ message: "An error occured" });
+  }
 });
 
-
-app.listen(3005, function() {
-  console.log(
-    "The server has started on port 3005"
-  );
+app.listen(3005, function () {
+  console.log("The server has started on port 3005");
 });
