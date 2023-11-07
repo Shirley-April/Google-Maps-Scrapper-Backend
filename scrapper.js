@@ -1,6 +1,6 @@
 import { launch } from "puppeteer";
 
-export async function scrapeGoogleMaps() {
+export async function scrapeGoogleMaps(search) {
   const browser = await launch();
   const page = await browser.newPage();
 
@@ -8,7 +8,7 @@ export async function scrapeGoogleMaps() {
 
   const searchSelector = "#searchboxinput";
   await page.waitForSelector(searchSelector);
-  await page.type(searchSelector, "supermarkets in nairobi");
+  await page.type(searchSelector, search);
 
   const searchBtnSelector = "#searchbox-searchbutton";
   await page.waitForSelector(searchBtnSelector);
