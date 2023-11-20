@@ -1,54 +1,138 @@
-import { launch } from "puppeteer";
+import * as cheerio from "cheerio";
+import puppeteerExtra from "puppeteer-extra";
+import stealthPlugin from "puppeteer-extra-plugin-stealth";
 
-export async function scrapeGoogleMaps(search) {
-  const browser = await launch();
-  const page = await browser.newPage();
+export async function scrapeGoogleMaps(query) {
+  try {
+    const start = Date.now();
 
-  await page.goto("https://www.google.com/maps");
+    puppeteerExtra.use(stealthPlugin());
 
-  const searchSelector = "#searchboxinput";
-  await page.waitForSelector(searchSelector);
-  await page.type(searchSelector, search);
+    const browser = await puppeteerExtra.launch({
+      headless: false,
+      executablePath: "",
+    });
 
-  const searchBtnSelector = "#searchbox-searchbutton";
-  await page.waitForSelector(searchBtnSelector);
-  await page.click(searchBtnSelector);
+    const page = await browser.newPage();
 
-  const scrollableSection = await page.$(".e07Vkf.kA9KIf");
-
-  let contents = [];
-
-  if (scrollableSection) {
-    const targetContentsCount = 4; // Number of results to extract
-
-    // Scroll up to extract contents until reaching the target count
-    while (contents.length < targetContentsCount) {
-      // Extract content from each element within the scrollable section
-      const extractedContents = await page.$$eval(
-        ".e07Vkf.kA9KIf .qBF1Pd.fontHeadlineSmall ",
-        (elements) => elements.map((element) => element.textContent)
+    try {
+      await page.goto(
+        `https://www.google.com/maps/search/${query.split(" ").join("+")}`
       );
-
-      contents = contents.concat(extractedContents);
-
-      await scrollUp(page, scrollableSection);
+    } catch (error) {
+      console.log("error going to page");
     }
 
-    // Keep only the first `targetContentsCount` contents
-    contents = contents.slice(0, targetContentsCount);
+    async function autoScroll(page) {
+      await page.evaluate(async () => {
+        const wrapper = document.querySelector('div[role="feed"]');
 
-    console.log("Extracted Contents:", contents);
-  } else {
-    console.log("Scrollable section not found.");
+        await new Promise((resolve, reject) => {
+          var totalHeight = 0;
+          var distance = 1000;
+          var scrollDelay = 3000;
+
+          var timer = setInterval(async () => {
+            var scrollHeightBefore = wrapper.scrollHeight;
+            wrapper.scrollBy(0, distance);
+            totalHeight += distance;
+
+            if (totalHeight >= scrollHeightBefore) {
+              totalHeight = 0;
+              await new Promise((resolve) => setTimeout(resolve, scrollDelay));
+
+              // Calculate scrollHeight after waiting
+              var scrollHeightAfter = wrapper.scrollHeight;
+
+              if (scrollHeightAfter > scrollHeightBefore) {
+                // More content loaded, keep scrolling
+                return;
+              } else {
+                // No more content loaded, stop scrolling
+                clearInterval(timer);
+                resolve();
+              }
+            }
+          }, 200);
+        });
+      });
+    }
+
+    await autoScroll(page);
+
+    const html = await page.content();
+    const pages = await browser.pages();
+    await Promise.all(pages.map((page) => page.close()));
+
+    await browser.close();
+    console.log("browser closed");
+
+    // get all a tag parent where a tag href includes /maps/place/
+    const $ = cheerio.load(html);
+    const aTags = $("a");
+    const parents = [];
+    aTags.each((i, el) => {
+      const href = $(el).attr("href");
+      if (!href) {
+        return;
+      }
+      if (href.includes("/maps/place/")) {
+        parents.push($(el).parent());
+      }
+    });
+
+    console.log("parents", parents.length);
+
+    const buisnesses = [];
+
+    parents.forEach((parent) => {
+      const url = parent.find("a").attr("href");
+      // get a tag where data-value="Website"
+      const website = parent.find('a[data-value="Website"]').attr("href");
+      // find a div that includes the class fontHeadlineSmall
+      const storeName = parent.find("div.fontHeadlineSmall").text();
+      // find span that includes class fontBodyMedium
+      const ratingText = parent
+        .find("span.fontBodyMedium > span")
+        .attr("aria-label");
+
+      // get the first div that includes the class fontBodyMedium
+      const bodyDiv = parent.find("div.fontBodyMedium").first();
+      const children = bodyDiv.children();
+      const lastChild = children.last();
+      const firstOfLast = lastChild.children().first();
+      const lastOfLast = lastChild.children().last();
+
+      buisnesses.push({
+        placeId: `ChI${url?.split("?")?.[0]?.split("ChI")?.[1]}`,
+        address: firstOfLast?.text()?.split("·")?.[1]?.trim(),
+        category: firstOfLast?.text()?.split("·")?.[0]?.trim(),
+        phone: lastOfLast?.text()?.split("·")?.[1]?.trim(),
+        googleUrl: url,
+        bizWebsite: website,
+        storeName,
+        ratingText,
+        stars: ratingText?.split("stars")?.[0]?.trim()
+          ? Number(ratingText?.split("stars")?.[0]?.trim())
+          : null,
+        numberOfReviews: ratingText
+          ?.split("stars")?.[1]
+          ?.replace("Reviews", "")
+          ?.trim()
+          ? Number(
+              ratingText?.split("stars")?.[1]?.replace("Reviews", "")?.trim()
+            )
+          : null,
+      });
+    });
+    const end = Date.now();
+
+    console.log(`time in seconds ${Math.floor((end - start) / 1000)}`);
+
+    console.dir(buisnesses);
+
+    return buisnesses;
+  } catch (error) {
+    console.log("error at googleMaps", error.message);
   }
-
-  return contents;
 }
-
-const scrollUp = async (page, element) => {
-  await page.evaluate(async (section) => {
-    section.scrollTop -= 100; // Adjust the scroll amount as needed
-    await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait for a moment after scrolling
-  }, element);
-};
-
