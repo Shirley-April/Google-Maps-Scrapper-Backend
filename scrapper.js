@@ -112,17 +112,11 @@ export async function scrapeGoogleMaps(query) {
         bizWebsite: website,
         storeName,
         ratingText,
-        stars: ratingText?.split("stars")?.[0]?.trim()
-          ? Number(ratingText?.split("stars")?.[0]?.trim())
-          : null,
-        numberOfReviews: ratingText
-          ?.split("stars")?.[1]
-          ?.replace("Reviews", "")
-          ?.trim()
-          ? Number(
-              ratingText?.split("stars")?.[1]?.replace("Reviews", "")?.trim()
-            )
-          : null,
+        stars: ratingText?.split(" ")?.[1],
+        numberOfReviews: ratingText?.split(" ")?.[3],
+        price: !isNaN(storeName?.split(/\s+/).slice(-1).join(" "))
+          ? storeName?.split(/\s+/).slice(-1).join(" ")
+          : null  ,
       });
     });
     const end = Date.now();
